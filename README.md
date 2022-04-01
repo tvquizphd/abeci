@@ -1,13 +1,23 @@
 # abeci 
 
+## Dependencies
+
+Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda.
+
 ## Pangram Generator
 
 ```
-conda env update --file ngram.yml
+conda env create -f environment.yaml
+```
+or 
+```
+conda env update -f environment.yaml
 ```
 
+Then, activate the installed environment:
+
 ```
-conda activate ngram
+conda activate abeci
 ```
 
 ## Gotchas

@@ -1,8 +1,11 @@
 from itertools import permutations, combinations, product
 from sympy.solvers.diophantine.diophantine import partition
 from google_ngram_downloader import readline_google_store
+from bisect import insort
 from pathlib import Path
 import unidecode
+import signal
+import sys
 import pickle 
 import yaml
 import math
@@ -111,22 +114,24 @@ def sortDict(d, keys, leaf):
 
   return True
 
-def listWordTrees(possible):
+def listWordTrees(possible, letterMap):
   vcLists = [toKeyTuple(line) for line in possible]
   vcKeys = set([vc for vcs in vcLists for vc in vcs])
   vcKeysDescending = sorted(vcKeys, reverse=True)
   wordTree = {}
   already = set()
   for vcl in vcLists:
-    if (vcl not in already):
-      wordTree = setDict(wordTree, vcl)
-      already.add(vcl)
+    invalid = (k not in letterMap for k in vcl)
+    if vcl in already or any(invalid):
+      continue
+    wordTree = setDict(wordTree, vcl)
+    already.add(vcl)
   wordTreeList = sortDict(wordTree, vcKeysDescending, [])
   return wordTreeList
 
-def writePossibleFile(possibleFile, maxConsonants, v1, v2):
+def writePossibleFile(possibleFile, letterMap, maxConsonants, v1, v2):
   possible = list(showPossible(maxConsonants, v1, v2))
-  wordTreeList = listWordTrees(possible)
+  wordTreeList = listWordTrees(possible, letterMap)
   print(f'writing {possibleFile}...')
   with open(possibleFile, "w") as wf:
     yaml.dump(wordTreeList, wf)
@@ -153,11 +158,11 @@ def prettyPrint(wnl):
 
 class OutputState:
 
-  def __init__(self, output, ivList, cacheItem):
+  def __init__(self, output, ivLength, cacheItem):
     self.output = output
     numC = len(cacheItem)
     cacheReader = lambda i: cacheItem[i] if i < numC else 0
-    self.combIndexList = list(map(cacheReader, range(len(ivList))))
+    self.combIndexList = list(map(cacheReader, range(ivLength)))
 
 class Recounter:
 
@@ -166,21 +171,18 @@ class Recounter:
     self.leaf = leaf
     self.cList = cList
     self.wordMap = wordMap
-    self.letterMap = letterMap
     self.keyList = [""] + leaf.split(" ")
-    self.letterList = []
-    for k in self.keyList:
-      if k not in letterMap:
-        raise ValueError(k)
-      self.letterList.append(letterMap[k])
+    self.letterList = [letterMap[k] for k in self.keyList]
 
-  def recount(self, output, ivList, cacheItem):
-    self.length = len(ivList)
+  def recount(self, output, length, cacheItem):
+    self.o = OutputState(output, length, cacheItem)
+    loop = zip(cacheItem, self.letterList, self.keyList)
+    addedStart = self.combiner(list(loop)[1:], 0)
+    ivBase = [{ 'combo': '', 'integer': 0 }]
+    self.ivListRoot = ivBase + addedStart 
     self.copiedKeys = findCopies(self.keyList)
-    self.o = OutputState(output, ivList, cacheItem)
-    ivListRoot = [iv for iv in ivList if len(iv.keys()) > 1]
-    self.pivot = len(ivListRoot)
-    self.ivListRoot = ivListRoot
+    self.pivot = len(cacheItem)
+    self.length = length
 
   def skipper(self, valid):
     return max(0, self.length - valid - 1)
@@ -191,9 +193,9 @@ class Recounter:
     iter = zip(words, combIndexList, letterList)
     return ' '.join(list(map(prettyPrint, iter))[1:])
 
-  def printNexts(self, words):
+  def logNexts(self, words):
     stats = self.stringifyWordList(words)
-    print(f'Item #{1+len(self.o.output)} {self.leaf}: {stats}')
+    return f'Result #{1+len(self.o.output)}: {stats}'
 
   def iterateIteration(self, skipping):
     output = [0]*skipping
@@ -213,72 +215,72 @@ class Recounter:
     pivot = len(combIndexList)-len(output)
     return combIndexList[:pivot] + output
 
-  def handleNext(self, cache, nextC, ivList):
+  def handleNext(self, logList, cache, nextC):
 
     copiedKeys = self.copiedKeys
-    ivListRoot = self.ivListRoot
 
-    added = self.combine()
-    ivListNew = ivListRoot + added
-    isValid, skipping = self.verify(ivListNew)
+    ivList = self.ivListRoot + self.combine()
+    isValid, skipping = self.verify(ivList)
 
-    for valid in copiedKeys:
-      skip = self.skipper(valid)
+    # Ensure no duplicates among identical keys
+    # Identical keys like "3x" are possible
+    for dup in copiedKeys:
+      skip = self.skipper(dup)
       if skip >= skipping:
-        iv0 = self.o.combIndexList[valid - 1]
-        iv1 = self.o.combIndexList[valid]
+        iv0 = self.o.combIndexList[dup - 1]
+        iv1 = self.o.combIndexList[dup]
         if iv0 <= iv1:
           self.o.combIndexList = self.iterateIteration(skip)
-          return (self.o.output, ivList, cache)
+          return (self.o.output, logList, cache)
         
-    if len(ivListNew) >= nextC:
-      caching = self.o.combIndexList[:nextC]
-      cache.add(tuple(caching))
+    # Cache partial matches
+    if len(ivList) >= nextC:
+      caching = tuple(self.o.combIndexList[:nextC])
+      if (cache or [()])[-1] != caching:
+        cache.append(tuple(caching))
 
-    words = finalizeCombos(self.wordMap, ivListNew)
-
+    # Update
     if isValid:
-      words = finalizeCombos(self.wordMap, ivListNew)
-      if words not in self.o.output:
-        self.o.output.append(words)
-        ivList = ivListNew
-      else:
-        print(end='!', flush=True)
-        self.o.combIndexList = self.iterateIteration(self.length - 1)
-      # Logging
-      if len(self.o.output) % 10000 == 0:
-        print()
-        self.printNexts(words)
-      elif len(self.o.output) % 1000 == 0:
-        print(end='o', flush=True)
+      words = finalizeCombos(self.wordMap, ivList)
+      self.o.output.add(words)
+      logList.append(self.logNexts(words))
 
+    # Iterate
     self.o.combIndexList = self.iterateIteration(skipping)
-    return (self.o.output, ivList, cache)
+    return (self.o.output, logList, cache)
 
-  def guessNext(self, output, ivList, cache, cacheC, nextC):
+  def guessNext(self, output, cache, cacheC, nextC, leafIndex):
+    logMax = 4
     leaf = self.leaf
-    emptyLength = len(leaf.split(' ')[cacheC:])
-    ivEmptyNew = [{} for _ in range(emptyLength + 1)]
-    ivList = ivList[:cacheC] + ivEmptyNew
-    iter = list(cache)
-    cache = set()
+    [cached, cache] = [cache, []]
+    length = len(leaf.split(' ')) + 1
 
-    print()
-    cacheLog = (f'Cached {cacheC}w', f'Caching {nextC}w')
-    print('. '.join([leaf, f'{len(output)} pangrams found', *cacheLog]))
-
-    for i, cacheItem in enumerate(iter):
+    for i, cacheItem in enumerate(cached):
      
-      self.recount(output, ivList, cacheItem)
+      self.recount(output, length, cacheItem)
 
-      #Logging
-      if i % max(len(iter) // 20, 1) == 0:
-        print(f'Cache {i}/{len(iter)}', end=' ', flush=True)
-
+      tries = 0
+      logList = []
+      outLen = len(output)
       while self.notComplete(cacheItem):
-        output, ivList, cache = self.handleNext(cache, nextC, ivList)
+        output, logList, cache = self.handleNext(logList, cache, nextC)
+        tries +=1
 
-    return output, ivList, cache
+      # Logging
+      if len(logList):
+        ll = [str(len(l)) for l in self.letterList]
+        prod = "x".join(ll[cacheC:])
+        print(f'<leaf "count={prod}">')
+        leafLog = f"Leaf #{leafIndex + 1}: {leaf}"
+        matchLog = f"{len(logList)}/{tries} match"
+        cacheLog = f"From {cacheC}w cache to {nextC}w cache"
+        print('. '.join([leafLog, matchLog, cacheLog]))
+        print('\n'.join(logList[:logMax]))
+        if len(logList) > logMax:
+          print('...')
+        print(f"</leaf>")
+
+    return output, cache
 
   def notComplete(self, cacheItem):
     lastCache = cacheItem[-1]
@@ -300,24 +302,27 @@ class Recounter:
       bits += "1" if a in c else "0"
     return int(bits, 2)
 
-  def combine(self):
-    keyList = self.keyList
-    letterMap = self.letterMap
-    letterList = self.letterList
-    combIndexList = self.o.combIndexList
-    allConsonants = 0 
+  def combiner(self, loop, allConsonants):
     combos = []
-    for next, letters, key in list(zip(combIndexList, letterList, keyList))[self.pivot:]:
+    for next, letters, key in loop:
       if next >= len(letters):
         break
       combo = list(letters[next])
       integer = self.maskCombo(combo)
       if (allConsonants & integer) != 0:
         break
-      out = {"combo": combo, "integer": integer}
       allConsonants |= integer
+      out = {"combo": combo, "integer": allConsonants}
       combos.append(ivParser(out))
     return combos 
+
+  def combine(self):
+    keyList = self.keyList
+    letterList = self.letterList
+    combIndexList = self.o.combIndexList
+    allConsonants = int(self.ivListRoot[-1]["integer"])
+    loop = list(zip(combIndexList, letterList, keyList))[self.pivot:]
+    return self.combiner(loop, allConsonants)
 
 def finalizeCombos(wordMap, ivList):
   getter = lambda iv: wordMap.get(iv['combo'], '')
@@ -337,27 +342,23 @@ def readLines(readableFile):
   with open(readableFile, 'r') as rf:
     return rf.read().splitlines()
 
-def writeLine(readableFile, line):
+def writeLines(readableFile, lines):
   mode = 'a' if readableFile.is_file() else 'w'
   with open(readableFile, mode) as wf:
-    wf.write(line+"\n")
+    for line in lines:
+      wf.write(f"{line}\n")
 
 def makeNewCache():
   return set([(0,)])
 
-def leafValue(wordMap, letterMap, input, emptyFile, cList):
+def mainLoop(wordMap, letterMap, leafList, cList, logger):
 
-  output = []
   cacheC = 1
   cachedLeaf = ''
+  output = set()
   cache = makeNewCache() 
-  knownEmpty = readLines(emptyFile)
-  ivList = [{ 'combo': '', 'integer': 0 }]
-  leafList = [i for i in input if i not in knownEmpty]
 
-  print(f'Looping through {len(leafList)} leaves')
-  for (leaf, nextLeaf) in zip(leafList, leafList[1:]):
-
+  for leafIndex, (leaf, nextLeaf) in enumerate(zip(leafList, leafList[1:])):
     try:
       recounter = Recounter(leaf, letterMap, wordMap, cList)
     except ValueError as e:
@@ -373,10 +374,9 @@ def leafValue(wordMap, letterMap, input, emptyFile, cList):
 
     if len(cache) > 0:
       cachedLeaf = leaf
-      output, ivList, cache = recounter.guessNext(output, ivList, cache, cacheC, nextC)
-
-    if len(output) == outputLength:
-      writeLine(emptyFile, leaf)
+      output, cache = recounter.guessNext(output, cache, cacheC, nextC, leafIndex)
+    else:
+      logger.trackEmpty(leaf)
 
   return output
 
@@ -385,11 +385,11 @@ def readFromCache(yamlFile, transform):
   pickled = pickleFile.is_file()
   if pickled:
     with open(pickleFile, 'rb') as rf:
-      print(f'reading {pickleFile}...')
+      print(f'Reading {pickleFile}...')
       return pickle.load(rf)
 
   with open(yamlFile, 'r') as rf:
-    print(f'reading {yamlFile}...')
+    print(f'Reading {yamlFile}...')
     output = transform(yaml.safe_load(rf))
     if not pickled:
       print(f'Writing {pickleFile}')
@@ -397,14 +397,8 @@ def readFromCache(yamlFile, transform):
         pickle.dump(output, wf)
     return output
 
-def transformCounts(letterCounts):
-  return letterCounts 
-
-def transformWords(wordLists):
-  output = {}
-  for key, words in wordLists.items():
-    output[key] = words[0]
-  return output
+def pickFirstWord(wordLists):
+  return {k: w[0] for k, w in wordLists.items()}
 
 def toHash(list):
   return ''.join(sorted(list))
@@ -436,14 +430,12 @@ def flattenList(tree):
       return flattenList(tree[0]) + flattenList(tree[1:])
   return tree[:1] + flattenList(tree[1:])
 
-def readLetterMap(countFile, transformCounts):
-  counts = readFromCache(countFile, transformCounts)
-  nonZeroSets = [k for k,v in counts.items() if v > 0]
+def toLetterMap(wordMap):
   letterMap = {'': []}
-  for s in nonZeroSets:
-    key = getVowelKey(s) 
-    vm = letterMap.get(key, [])
-    letterMap[key] = [*vm, s]
+  for combo in wordMap.keys():
+    key = getVowelKey(combo) 
+    combos = letterMap.get(key, [])
+    letterMap[key] = [*combos, combo]
   return letterMap
 
 def makePossibleTransformer(letterMap):
@@ -456,19 +448,6 @@ def makePossibleTransformer(letterMap):
     return [l for l in list if hasLetters(l)]
 
   return flattener
-
-def readFiles(possibleFile, emptyFlie, wordFiles, maxConsonants, cList, v1, v2):
-  countFile = wordFiles["counts"]
-  listFile = wordFiles["lists"]
-  letterMap = readLetterMap(countFile, transformCounts)
-
-  wordMap = readFromCache(listFile, transformWords)
-  transformPossible = makePossibleTransformer(letterMap)
-  input = readFromCache(possibleFile, transformPossible) + ['']
-
-  print('ready') 
-  output = leafValue(wordMap, letterMap, input, emptyFile, cList)
-  return output
 
 def toVowels(v1, v2):
   v1v2 = (("",), ("e",),) + tuple(tuple(v) for v in v1 + v2)
@@ -514,151 +493,118 @@ def logging(firstLetter, word, notable):
     print(display, end="", flush=True)
   return word[0]
   
-def minMap(q):
-  # Estimates for fraction of non-noise hits
-  # Words with more letters have less noise
-  targets = {
-    1: 0.1,
-    2: 0.1,
-    3: 0.1,
-    4: 0.3,
-    5: 0.5,
-    6: 1.0,
-    7: 1.0,
-    8: 1.0,
-  }
-  output = {}
-  isInt = lambda i: isinstance(i, int)
-  for t,target in targets.items():
-    stats = q.get(t, {})
-    keys = sorted([i for i in stats.keys() if isInt(i)])
-    for f in keys[::-1]:
-      atLeast = stats[f]
-      if atLeast >= target:
-        output[t] = f
-        break
-    if t not in output: 
-      output[t] = 0
-  return output
+def noteCopy(noted, wf):
+  word = wf["w"]
+  freq = wf["f"]
+  try:
+    copyIndex = next(i for i,v in enumerate(noted) if v["w"] == word)
+    noted[copyIndex]["f"] = max(noted[copyIndex]["f"], freq)
+    return True
+  except StopIteration:
+    return False
 
-def countLetterSets(minPow, maxConsonants, q, cList, v1, v2):
+def countLetterSets(minPow, maxConsonants, cList, v1, v2):
   # Ignore any word with <8192 (2**13) frequency
-  minima = int(2**minPow)
-  letterDict = {}
-  notableWords = {} 
+  minimum = int(2**minPow)
+  wordsByLength = {} 
   firstLetter = " "
-
-  mapped = minMap(q)
-  minWord = min(mapped.keys())
-  maxWord = max(mapped.keys())
-  idxMap = lambda w: mapped[min(max(len(w),minWord),maxWord)]
-  print(mapped)
+  maxWords = 8
+  # Track given number of words by length
+  lengthCounts = [0, 4, 120] + [800] * (maxWords - 2)
 
   for (word, freq) in readWordRecords():
     letters = hashWord(word)
+    length = len(letters)
+    if length >= len(lengthCounts) or freq < minimum:
+      continue
     if not isGoodWord(word, letters, v1, v2, maxConsonants):
       continue
-    if freq < max(minima, idxMap(word)):
+    wf = {"w": word, "f": freq, "l": letters}
+    sameLength = wordsByLength.get(length, [])
+    # Deduplicate with maximum frequency
+    if noteCopy(sameLength, wf):
       continue
-    wf = {"w": word, "f": freq}
-    noted = notableWords.get(letters,[])
-    if word in [w["w"] for w in noted]:
-      continue
-    notableWords[letters] = [*noted, wf]
-    counted = letterDict.get(letters, 0)
-    letterDict[letters] = counted + 1
-    firstLetter = logging(firstLetter, word+" ", True)
+    insort(sameLength, wf, key=lambda v: v["f"])
+    excessCount = len(sameLength) > lengthCounts[length]
+    firstLetter = logging(firstLetter, word+" ", False)
+    # Remove excess words
+    if excessCount:
+      lostWord = sameLength.pop(0)["w"]
+      logging(firstLetter, lostWord+" ", word == lostWord)
 
-  for k in notableWords.keys():
-    notableWords[k].sort(key=lambda v: v["f"], reverse=True)
-    notableWords[k] = [v["w"] for v in notableWords[k]]
+  wordsByLetter = {}
+  # Higher frequencies prepended
+  for sameLength in wordsByLength:
+    for wf in sameLength:
+      letterList = wordsByLetter.get(wf["l"], [])
+      wordsByLetter[wf["l"]] = [wf["w"], *letterList]
 
-  return (letterDict, notableWords)
+  return wordsByLetter
 
-def writeWordFiles(wordFiles, qFile, minPow, maxConsonants, cList, v1, v2):
-  with open(qFile, "r") as rf:
-    q = yaml.safe_load(rf)
+def writeWordFile(wordFile, minPow, maxConsonants, cList, v1, v2):
 
-  letterDict, notableWords = countLetterSets(minPow, maxConsonants, q, cList, v1, v2)
-  countFile = wordFiles["counts"]
-  listFile = wordFiles["lists"]
+  wordsByLetter = countLetterSets(minPow, maxConsonants, cList, v1, v2)
 
   print()
-  print(f'writing {countFile}...')
-  with open(countFile, "w") as wf:
-    yaml.dump(letterDict, wf)
-
-  print(f'writing {listFile}...')
-  with open(listFile, "w") as wf:
-    yaml.dump(notableWords, wf)
+  print(f'writing {wordFile}...')
+  with open(wordFile, "w") as wf:
+    yaml.dump(wordsByLetter, wf)
 
   print('written.')
 
-def writeQ(qFile, minPow, maxConsonants, v1, v2):
-  items = {}
-  allWords = set()
-  firstLetter = " "
-  for (word, freq) in readWordRecords():
-    letters = hashWord(word)
-    if not isGoodWord(word, letters, v1, v2, maxConsonants):
-      continue
-    if freq < 2**minPow:
-      continue
-    if word in allWords:
-      continue
-    allWords.add(word)
-    wordLen = len(word)
-    items[wordLen] = items.get(wordLen, []) + [freq]
-    firstLetter = logging(firstLetter, word+" ", False)
+class Logger:
 
-  sumItems = {k: {} for k in items.keys()}
-  outItems = {k: {} for k in items.keys()}
+  def __init__(self, emptyFile):
+    self.emptyLines = []
+    self.emptyFile = emptyFile
+    signal.signal(signal.SIGINT, self.exit)
 
-  for k,v in items.items():
-    mean = sum(v)/len(v)
-    sumItems[k]["mean"] = mean
-    s2 = [(i - mean)**2 for i in v]
-    sumItems[k]["std"] = math.sqrt(sum(s2)/len(v))
+  def trackEmpty(self, line):
+    self.emptyLines.append(line)
 
-  for k,v in items.items():
-    vCount = len(v)
-    std = sumItems[k]["std"]
-    mean = sumItems[k]["mean"]
-    outItems[k]["n"] = vCount
-    maxPow = math.floor(math.log2(mean))
-    smallerPower = range(minPow, maxPow)
-    smaller = [int(2**p) for p in smallerPower]
-    bigger = [int(mean + d*std) for d in range(5)]
-    for freq in smaller + bigger:
-      q = len([i for i in v if i > freq])
-      outItems[k][freq] = q / vCount 
+  def exit(self, s, f):
+    emptyCount = len(self.emptyLines)
+    print(f'Adding {emptyCount} empty lines')
+    writeLines(self.emptyFile, self.emptyLines)
+    sys.exit(0)
 
-  with open(qFile, "w") as wf:
-    yaml.dump(outItems, wf)
+def readLeafList(possibleFile, emptyFile):
+  knownEmpty = readLines(emptyFile)
+  inList = readFromCache(possibleFile, flattenList)
+  return [i for i in inList if i not in knownEmpty] + ['']
 
 if __name__ == "__main__":
-  qFile = Path("stats.yaml")
-  possibleFile = Path("possible.yaml")
-  emptyFile = Path("empty.txt")
-  wordFiles = {
-    "counts": Path("letterCounts.yaml"),
-    "lists": Path("wordLists.yaml")
-  }
+  eDir = Path("effects")
+  oDir = Path("results")
+  oFile = oDir / Path("pangrams.txt")
+  eDir.mkdir(parents=True, exist_ok=True)
+  oDir.mkdir(parents=True, exist_ok=True)
+  possibleFile = eDir / Path("possible.yaml")
+  wordFile = eDir / Path("wordMap.yaml")
+  emptyFile = eDir / Path("empty.txt")
   cList = 'bcdfghjklmnpqrstvwxz'
   maxConsonants = 6
-  minPow = 10
+  minPow = 8
   v1 = "aio"
   v2 = "yu"  
 
+  if not wordFile.is_file():
+    writeWordFile(wordFile, minPow, maxConsonants, cList, v1, v2)
+
+  wordMap = readFromCache(wordFile, pickFirstWord)
+  letterMap = toLetterMap(wordMap)
+
   if not possibleFile.is_file():
-    writePossibleFile(possibleFile, maxConsonants, v1, v2)
+    writePossibleFile(possibleFile, letterMap, maxConsonants, v1, v2)
 
-  if not qFile.is_file():
-    writeQ(qFile, minPow, maxConsonants, v1, v2)
+  logger = Logger(emptyFile)
+  print(f"Reading {emptyFile}")
+  leafList = readLeafList(possibleFile, emptyFile)
+  print(f'Using {len(leafList)} patterns')
+  output = mainLoop(wordMap, letterMap, leafList, cList, logger)
+  print(f'Writing {oFile}')
 
-  if not all(f.is_file() for f in wordFiles.values()):
-    writeWordFiles(wordFiles, qFile, minPow, maxConsonants, cList, v1, v2)
-
-  out = readFiles(possibleFile, emptyFile, wordFiles, maxConsonants, cList, v1, v2)
-  with open('output.p', 'wb') as wf:
-    pickle.dump(out, wf)
+  with open(oFile, 'w') as wf:
+    for o in sorted(out):
+      oStr = " ".join(o)
+      wf.write(f'{oStr}\n')
