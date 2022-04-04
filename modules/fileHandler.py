@@ -1,24 +1,17 @@
-from .writePatterns import writePossibleFile
+from .writePatterns import writePatterns
 from .readFromCache import readFromCache
 from .readFromCache import writeLines
 from .readFromCache import readLines
 
 from google_ngram_downloader import readline_google_store
+from statistics import variance
 from bisect import insort
 from pathlib import Path
 import unidecode
 import signal
+import math
 import yaml
 import sys
-
-
-def countLength(maxWords, shortMaxima, bigMax):
-    smallLength = len(shortMaxima)
-    bigMaxs = [bigMax] * (maxWords - smallLength)
-    lengthCounts = [0] + shortMaxima + bigMaxs
-    someCounts = lengthCounts[1:2+smallLength]
-    lengthKey = "_".join(map(str, someCounts))
-    return lengthKey, lengthCounts
 
 
 def updateWords(noted, wf):
@@ -47,76 +40,87 @@ def readWordRecords():
         filename = fname.split('.')[0]
         suffix = filename.split('-')[-1]
         if len(suffix) > 1 or not suffix[0].isalpha():
-            print(f'{filename}')
             continue
         for record in records:
             if record.year == 2008:
                 word = unidecode.unidecode(record.ngram)
                 if isWordOkay(word):
-                    freq = record.match_count
-                    yield (word.lower(), freq)
+                    frequency = record.match_count
+                    yield (word.lower(), frequency)
 
 
-def isGoodWord(word, letters, v1, v2, maxConsonants):
+def isGoodWord(word, letters, maxConsonants, maxVowels):
     if len(word) > len(letters):
         return False
-    eCount = 1 if "e" in letters else 0
-    v1Count = sum(v in letters for v in v1)
-    v2Count = sum(v in letters for v in v2)
-    vCount = sum([eCount, v1Count, v2Count])
+    vCount = sum(v in letters for v in "aeiouy")
     cCount = len(letters) - vCount
-    if eCount > 0 and vCount > 1:
-        return False
-    if v1Count > 1 or vCount > 2:
-        return False
-    if cCount > maxConsonants:
+    if cCount > maxConsonants or vCount > maxVowels:
         return False
     return True
 
 
-def countLetterSets(minPow, maxConsonants, lengthCounts, cList, v1, v2):
-    # Ignore any word with <8192 (2**13) frequency
-    minimum = int(2**minPow)
-    wordsByLength = {}
-    firstLetter = " "
+def weighFrequency(chars, baseline, frequency):
+    prior = math.prod([baseline.get(c, 1) for c in chars])
+    return frequency / prior
 
-    for (word, freq) in readWordRecords():
+
+def countLetterSets(minFreq, maxConsonants, maxVowels, maxCounts, cList, baseline):
+    # Ignore any word with <8192 (2**13) frequency
+    wordsByKey = {}
+    lastWords = (" ", " ")
+    lastFirstLetter = " "
+    deltas = {"+": [], "-": []}
+
+    for (word, frequency) in readWordRecords():
         letters = hashWord(word)
-        length = len(letters)
-        if length >= len(lengthCounts) or freq < minimum:
+        key = getVowelKey(letters)
+        maxKey = str(len(letters))
+        keyMax = maxCounts.get(maxKey, maxCounts['*'])
+        freq = weighFrequency(letters, baseline, frequency)
+        if freq < minFreq:
             continue
-        if not isGoodWord(word, letters, v1, v2, maxConsonants):
+        if not isGoodWord(word, letters, maxConsonants, maxVowels):
             continue
         wf = {"w": word, "f": freq, "l": letters}
-        sameLength = wordsByLength.get(length, [])
+        keyWords = wordsByKey.get(key, [])
         # Deduplicate with maximum frequency
-        lengthMax = lengthCounts[length]
-        wordsByLength[length] = updateWords(sameLength, wf)
-        wordLength = len(wordsByLength[length])
-        # Remove excess words
-        if wordLength > lengthMax:
-            lostWord = wordsByLength[length].pop(0)["w"]
-            print(f"-{lostWord}", end="", flush=True)
-        elif wordLength % max(lengthMax // 100,    1) == 0:
-            print(f"+{length}", end="", flush=True)
-        # Update and log first letter
-        if firstLetter != word[0]:
-            firstLetter = (word+" ")[0]
-            print(f"\n{word[0]}:")
+        wordsByKey[key] = updateWords(keyWords, wf)
+        keyCount = len(wordsByKey[key])
+        excess = keyCount > keyMax
+        logWord = word
+        symbol = "+"
+        logLen = 500
+        if excess:
+            logWord = wordsByKey[key].pop(0)["w"]
+            symbol = "-"
+        # logging
+        deltas[symbol].append(logWord)
+        if len(deltas[symbol]) >= logLen:
+            deltas[symbol] = []
+            logTxt = f"{symbol}{logWord}"
+            print(logTxt, end=",", flush=True)
+        f0 = lastWords[0][0]
+        f1 = lastWords[1][0]
+        f2 = word[0][0]
+        if f0 != f1 and f1 == f2 and f2 != lastFirstLetter:
+            lastFirstLetter = f2
+            print(f"\n{f2}:")
+        # Track last two words
+        lastWords = (lastWords[1], word)
 
     wordsByLetter = {}
     # Higher frequencies prepended
-    for sameLength in wordsByLength.values():
-        for wf in sameLength:
+    for keyWords in wordsByKey.values():
+        for wf in keyWords:
             letterList = wordsByLetter.get(wf["l"], [])
             wordsByLetter[wf["l"]] = [wf["w"], *letterList]
 
     return wordsByLetter
 
 
-def writeWordFile(wordFile, minPow, maxConsonants, lengthCounts, cList, v1, v2):
+def writeWordFile(wordFile, minFreq, maxConsonants, maxVowels, maxCounts, cList, baseline):
 
-    wordsByLetter = countLetterSets(minPow, maxConsonants, lengthCounts, cList, v1, v2)
+    wordsByLetter = countLetterSets(minFreq, maxConsonants, maxVowels, maxCounts, cList, baseline)
 
     print()
     print(f'writing {wordFile}...')
@@ -152,8 +156,8 @@ def flattenList(tree):
     return tree[:1] + flattenList(tree[1:])
 
 
-def pickFirstWord(wordLists):
-    return {k: w[0] for k, w in wordLists.items()}
+def noModification(v):
+    return v
 
 
 def toHash(list):
@@ -169,36 +173,43 @@ class FileHandler:
 
     cList = 'bcdfghjklmnpqrstvwxz'
     maxConsonants = 6
-    minPow = 8
-    v1 = "aio"
-    v2 = "yu"
+    maxVowels = 2
 
-    def __init__(self, eDir, oDir, maxima):
-        v1 = self.v1
-        v2 = self.v2
+    def __init__(self, eDir, oDir, minFreq, maxCounts, maxReps, baseline):
         self.output = []
         cList = self.cList
-        minPow = self.minPow
         self.emptyLines = []
-        [*shortMaxima, bigMax] = maxima
+        maxVowels = self.maxVowels
         maxConsonants = self.maxConsonants
-        vCounts = [len(v) for v in (v1, v2)]
-        maxWords = maxConsonants + max(vCounts)
-        lengthKey, lengthCounts = countLength(maxWords, shortMaxima, bigMax)
+        suffix = f'{maxCounts["*"]}xx'
+        for k in sorted(maxCounts.keys()):
+            if k == "*":
+                continue
+            suffix = f'{suffix}_{maxCounts[k]}x{k}'
+        prefix = ""
+        for k in sorted(maxReps.keys()):
+            if maxReps[k] == 0:
+                prefix = f"_no{k}{prefix}"
+        baseVar = 0
+        if len(baseline) >= 2:
+            baseVariance = variance(baseline.values())
+            baseVar = int(100 * baseVariance)
+        prefix = f'var{baseVar}_over{minFreq}{prefix}'
 
-        self.possibleFile = eDir / Path(f"{lengthKey}_possible.yaml")
-        self.wordFile = eDir / Path(f"{lengthKey}_wordMap.yaml")
-        self.emptyFile = eDir / Path(f"{lengthKey}_empty.txt")
-        self.outFile = oDir / Path(f"{lengthKey}_pangrams.txt")
+        self.patternFile = eDir / Path(f"{prefix}_pattern_{suffix}.yaml")
+        self.wordFile = eDir / Path(f"{prefix}_wordMap_{suffix}.yaml")
+        self.emptyFile = eDir / Path(f"{prefix}_empty_{suffix}.txt")
+        self.outFile = oDir / Path(f"{prefix}_pangrams_{suffix}.txt")
+        print(f"prefix: {prefix}, suffix: {suffix}")
 
         if not self.wordFile.is_file():
-            writeWordFile(self.wordFile, minPow, maxConsonants, lengthCounts, cList, v1, v2)
+            writeWordFile(self.wordFile, minFreq, maxConsonants, maxVowels, maxCounts, cList, baseline)
 
-        self.wordMap = readFromCache(self.wordFile, pickFirstWord)
+        self.wordMap = readFromCache(self.wordFile, noModification)
         self.letterMap = toLetterMap(self.wordMap)
 
-        if not self.possibleFile.is_file():
-            writePossibleFile(self.possibleFile, self.letterMap, maxConsonants, v1, v2)
+        if not self.patternFile.is_file():
+            writePatterns(self.patternFile, self.letterMap, maxReps, maxConsonants, maxVowels)
 
         # Register ctrl-C
         signal.signal(signal.SIGINT, self.exit)
@@ -206,16 +217,19 @@ class FileHandler:
     def finish(self):
         outCount = len(self.output)
         emptyCount = len(self.emptyLines)
-        print(f'Saving {outCount} perfect pangram sets to {self.outFile}')
-        print(f'Saving {emptyCount} unused patterns to {self.emptyFile}')
         writeLines(self.emptyFile, self.emptyLines)
         writeLines(self.outFile, self.output)
+        print(f'Saved {outCount} perfect pangram sets to {self.outFile}')
+        print(f'Saved {emptyCount} unused patterns to {self.emptyFile}')
 
     def exit(self, s, f):
-        self.finish()
+        try:
+            self.finish()
+        except (BrokenPipeError, IOError):
+            pass
         sys.exit(0)
 
     def readLeafList(self):
         knownEmpty = readLines(self.emptyFile)
-        inList = readFromCache(self.possibleFile, flattenList)
+        inList = readFromCache(self.patternFile, flattenList)
         return [i for i in inList if i not in knownEmpty] + ['']

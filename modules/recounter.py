@@ -1,3 +1,5 @@
+from itertools import product
+
 
 def serialCombo(c):
     return ''.join(c["combo"])
@@ -29,8 +31,11 @@ def makeIndexList(ivLength, cacheItem):
     return list(map(cacheReader, range(ivLength)))
 
 
-def finalizeCombos(wordMap, ivList):
-    return tuple([wordMap.get(iv['combo'], '') for iv in ivList])
+def yieldWords(wordMap, ivList):
+    letterList = [iv['combo'] for iv in ivList]
+    wordLists = [wordMap.get(c, ['']) for c in letterList]
+    for words in product(*wordLists):
+        yield tuple(words)
 
 
 class Recounter:
@@ -69,7 +74,7 @@ class Recounter:
         return ' '.join(list(map(prettyPrint, iter))[1:])
 
     def logNexts(self, words):
-        outCount = 1 + len(self.files.output)
+        outCount = len(self.files.output)
         stats = self.stringifyWordList(words)
         return f'Result #{outCount}: {stats}'
 
@@ -117,9 +122,9 @@ class Recounter:
 
         # Update
         if isValid:
-            words = finalizeCombos(self.wordMap, ivList)
-            logList.append(self.logNexts(words))
-            self.addOutput(words)
+            for words in yieldWords(self.wordMap, ivList):
+                self.addOutput(words)
+                logList.append(self.logNexts(words))
 
         # Iterate
         self.combIndexList = self.iterateIteration(skipping)

@@ -1,5 +1,5 @@
 from sympy.solvers.diophantine.diophantine import partition
-from itertools import permutations
+from itertools import permutations, combinations
 
 import yaml
 
@@ -31,22 +31,6 @@ def toKeyTuple(line):
     return tuple(sorted(joined, reverse=True))
 
 
-def listWordTrees(possible, letterMap):
-    vcLists = [toKeyTuple(line) for line in possible]
-    vcKeys = set([vc for vcs in vcLists for vc in vcs])
-    vcKeysDescending = sorted(vcKeys, reverse=True)
-    wordTree = {}
-    already = set()
-    for vcl in vcLists:
-        invalid = (k not in letterMap for k in vcl)
-        if vcl in already or any(invalid):
-            continue
-        wordTree = setDict(wordTree, vcl)
-        already.add(vcl)
-    wordTreeList = sortDict(wordTree, vcKeysDescending, [])
-    return wordTreeList
-
-
 def noDecrease(pairList, keys):
     for key in keys:
         matchList = [b for a, b in pairList if a == key]
@@ -76,49 +60,61 @@ def findVowelLists(vow, cons):
         yield vowOut
 
 
-def toConsonantCounts(maxConsonants, numTotal, minWords, maxWords):
-    for size in range(minWords, maxWords + 1):
-        for part in partition(numTotal, size):
-            if part[-1] > maxConsonants:
-                continue
+def splitPartsWithLimit(maxPart, numTotal, num):
+    for part in partition(numTotal, num):
+        if part[-1] > maxPart:
+            continue
+        yield part
+
+
+def toConsonantCounts(maxConsonants, numTotal, wordRange):
+    for nWords in wordRange:
+        for part in splitPartsWithLimit(maxConsonants, numTotal, nWords):
             yield part
 
 
-def joinSorted(x, y):
-    return (''.join(sorted(x+y)),)
+def joinSorted(x):
+    return (''.join(sorted(x)),)
 
 
-def toVowelLists(v1, v2):
-    A = list(permutations(v1, 3))
-    U = list(permutations(v2, 2))
-    K = [(), ("x",), ("x", "x")]
-    e = ("e",)
-
-    a_ = A[0]
-    u_ = U[0]
-
-    for k in K:
-        yield k + e + a_ + u_
-        yield k + e + a_ + joinSorted(u_[0], u_[1])
-        for u in U:
-            for i, a0 in enumerate(a_):
-                a1 = a_[(i + 1) % 3]
-                a2 = a_[(i + 2) % 3]
-                u0a0 = joinSorted(u[0], a0)
-                u1a1 = joinSorted(u[1], a1)
-                yield k + e + u0a0 + (u[1], a1, a2)
-                yield k + e + u0a0 + u1a1 + (a2,)
+def groupByPartition(pool, part):
+    if not len(part):
+        yield ()
+        return
+    for chosen in combinations(pool, part[0]):
+        nextPart = part[1:]
+        nextPool = pool - set(chosen)
+        for rest in groupByPartition(nextPool, nextPart):
+            yield joinSorted(chosen) + rest
 
 
-def showPossible(maxConsonants, v1, v2):
+def toVowelLists(maxVowels, wordRange):
+    vList = list("aeiouy")
+    vCount = len(vList)
+    uniq = set()
+    for nWords in wordRange:
+        maxNoVowel = int(nWords - vCount / maxVowels)
+        for noVowelCount in range(maxNoVowel + 1):
+            nVow = nWords - noVowelCount
+            splitArgs = (maxVowels, vCount, nVow)
+            for part in splitPartsWithLimit(*splitArgs):
+                for vCombo in groupByPartition(set(vList), part):
+                    noVowelTuple = ('x',) * noVowelCount
+                    out = tuple(sorted(noVowelTuple + vCombo))
+                    if out not in uniq:
+                        uniq.add(out)
+                        yield out
+
+
+def toPatterns(maxConsonants, maxVowels):
     minWords = 4
     maxWords = 8
     numTotal = 20
-    wordRange = range(minWords, maxWords + 1)
+    wordRange = list(range(minWords, maxWords + 1))
     wordMap = {c: {'vowel': [], 'other': []} for c in wordRange}
-    for v in toVowelLists(v1, v2):
+    for v in toVowelLists(maxVowels, wordRange):
         wordMap[len(v)]["vowel"].append(v)
-    for c in toConsonantCounts(maxConsonants, numTotal, minWords, maxWords):
+    for c in toConsonantCounts(maxConsonants, numTotal, wordRange):
         wordMap[len(c)]["other"].append(c)
 
     total = len(wordMap.items())
@@ -131,9 +127,37 @@ def showPossible(maxConsonants, v1, v2):
         print(f"{i + 1} of {total}")
 
 
-def writePossibleFile(possibleFile, letterMap, maxConsonants, v1, v2):
-    possible = list(showPossible(maxConsonants, v1, v2))
-    wordTreeList = listWordTrees(possible, letterMap)
+def invalidate(letterMap, maxReps, vcl):
+    repMap = {}
+    for k in vcl:
+        if k not in letterMap:
+            return True
+        if k in maxReps:
+            repMap[k] = repMap.get(k, 0) + 1
+            if repMap[k] > maxReps[k]:
+                return True
+    return False
+
+
+def listWordTrees(possible, letterMap, maxReps):
+    vcLists = [toKeyTuple(line) for line in possible]
+    vcKeys = set([vc for vcs in vcLists for vc in vcs])
+    vcKeysDescending = sorted(vcKeys, reverse=True)
+    wordTree = {}
+    already = set()
+    for vcl in vcLists:
+        invalid = invalidate(letterMap, maxReps, vcl)
+        if vcl in already or invalid:
+            continue
+        wordTree = setDict(wordTree, vcl)
+        already.add(vcl)
+    wordTreeList = sortDict(wordTree, vcKeysDescending, [])
+    return wordTreeList
+
+
+def writePatterns(possibleFile, letterMap, maxReps, maxConsonants, maxVowels):
+    possible = list(toPatterns(maxConsonants, maxVowels))
+    wordTreeList = listWordTrees(possible, letterMap, maxReps)
     print(f'writing {possibleFile}...')
     with open(possibleFile, "w") as wf:
         yaml.dump(wordTreeList, wf)
