@@ -27,6 +27,7 @@ class Text():
     tagline = "Find perfect pangrams."
     shh = "Write less, not to log file"
     debug = "Increase verbosity of logs"
+    showAll = "Show all redundant pangrams"
     results = "Folder for output pangrams"
     effects = "Folder for intermediate steps"
     maxima = "Set max number of words for each length"
@@ -53,6 +54,11 @@ class Arguments():
         "metavar": "N",
         "nargs": "*",
         "type": int
+    }
+    a_ = {
+        "default": False,
+        "help": Text.showAll,
+        "action": "store_true"
     }
     s_ = {
         "default": False,
@@ -111,9 +117,11 @@ class Arguments():
 
         dFlags = ('--debug', '-d')
         sFlags = ('--shh', '-s')
+        aFlags = ('--all', '-a')
         arg_ = self.argumentKeys
         parser = argparse.ArgumentParser(**arg_)
         parser.add_argument('maxima', **self.max_)
+        parser.add_argument(*aFlags, **self.a_)
         parser.add_argument(*dFlags, **self.d_)
         parser.add_argument(*sFlags, **self.s_)
         parser.add_argument('-o', **self.o_)
@@ -146,6 +154,7 @@ class Arguments():
             arguments.o,
             arguments.e,
             arguments.shh,
+            arguments.all,
             arguments.r,
             maxCounts
         ]

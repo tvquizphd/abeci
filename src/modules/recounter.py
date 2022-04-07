@@ -22,11 +22,14 @@ def makeIndexList(ivLength, cacheItem):
     return list(map(cacheReader, range(ivLength)))
 
 
-def yieldWords(wordMap, ivList):
+def yieldWords(wordMap, ivList, showAll):
     letterList = [iv['combo'] for iv in ivList]
     wordLists = [wordMap.get(c, ['']) for c in letterList]
-    for words in product(*wordLists):
-        yield tuple(words)
+    if showAll:
+        for words in product(*wordLists):
+            yield tuple(words)
+    else:
+        yield [words[0] for words in wordLists]
 
 
 class Recounter:
@@ -113,7 +116,8 @@ class Recounter:
 
         # Update
         if isValid:
-            for words in yieldWords(self.wordMap, ivList):
+            showAll = self.config.showAll
+            for words in yieldWords(self.wordMap, ivList, showAll):
                 logger.add(self.logNexts(words))
                 self.addOutput(words)
 

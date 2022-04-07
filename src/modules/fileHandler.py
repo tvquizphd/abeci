@@ -33,7 +33,7 @@ class FileHandler:
         self.wordFile = eDir / toPath("word", "yaml")
         self.emptyFile = eDir / toPath("empty", "txt")
         self.outFile = oDir / toPath("pangrams", "txt")
-        self.sourceFile = eDir / toPath("source", "p")
+        self.sourceFile = eDir / "source.p"
 
     def readEmptyFile(self):
         emptyFile = self.emptyFile

@@ -13,8 +13,8 @@ from pathlib import Path
 import logging
 
 
-def makeConfig(shh, *args):
-    return Config(shh, *normalizeArguments(*args))
+def makeConfig(shh, showAll, *args):
+    return Config(shh, showAll, *normalizeArguments(*args))
 
 
 def loadLoop(files):

@@ -11,7 +11,7 @@ class Config:
     cList = 'bcdfghjklmnpqrstvwxz'
     vList = 'aeiouy'
 
-    def __init__(self, shh, *args):
+    def __init__(self, shh, showAll, *args):
         (maxRatio, maxCounts, maxReps, priors) = args[:4]
         (minWords, maxWords, maxC, maxV) = args[4:]
         self.maxRatio = maxRatio
@@ -25,6 +25,7 @@ class Config:
         self.output = []
         self.source = []
         self.empty = []
+        self.showAll = showAll
         self.shh = shh
 
     def makeFolder(self, folder):

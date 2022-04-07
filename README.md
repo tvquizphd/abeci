@@ -1,5 +1,9 @@
 # abeci 
 
+Create [perfect pangrams][pp], sentences with exactly one of each letter in the English alphabet.
+
+[pp]: https://en.wikipedia.org/wiki/Pangram#Perfect_pangrams
+
 ## Dependencies
 
 Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda.
