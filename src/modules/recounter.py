@@ -1,15 +1,6 @@
+from .logging import ResultLogger
+
 from itertools import product
-
-
-def serialCombo(c):
-    return ''.join(c["combo"])
-
-
-def ivParser(c):
-    return {
-        "combo": serialCombo(c),
-        "integer": c["integer"]
-    }
 
 
 def findCopies(keyList):
@@ -40,25 +31,27 @@ def yieldWords(wordMap, ivList):
 
 class Recounter:
 
-    def __init__(self, leaf, letterMap, wordMap, files):
+    def __init__(self, maps, config, leaf):
 
+        letterMap = maps.letterMap
+        keyList = [""] + leaf.split(" ")
+        self.letterList = [letterMap[k] for k in keyList]
+        self.wordMap = maps.wordMap
+        self.length = len(keyList)
+        self.keyList = keyList
+        self.config = config
         self.leaf = leaf
-        self.files = files
-        self.wordMap = wordMap
-        self.keyList = [""] + leaf.split(" ")
-        self.length = len(self.keyList)
-        self.letterList = [letterMap[k] for k in self.keyList]
 
     def addOutput(self, words):
-        self.files.output.append(" ".join(words))
+        self.config.addOutput(words)
 
     def addEmpty(self, line):
-        self.files.emptyLines.append(line)
+        self.config.addEmpty(line)
 
     def recount(self, cacheItem):
         self.combIndexList = makeIndexList(self.length, cacheItem)
-        loop = zip(cacheItem, self.letterList, self.keyList)
-        addedStart = self.combiner(list(loop)[1:], 0)
+        zipped = zip(cacheItem, self.letterList, self.keyList)
+        addedStart = self.combiner(list(zipped)[1:], 0)
         ivBase = [{'combo': '', 'integer': 0}]
         self.ivListRoot = ivBase + addedStart
         self.copiedKeys = findCopies(self.keyList)
@@ -74,12 +67,12 @@ class Recounter:
         return ' '.join(list(map(prettyPrint, iter))[1:])
 
     def logNexts(self, words):
-        outCount = len(self.files.output)
+        outCount = self.config.outputLength
         stats = self.stringifyWordList(words)
         return f'Result #{outCount}: {stats}'
 
     def iterateIteration(self, skipping):
-        output = [0]*skipping
+        newIndexList = [0]*skipping
         letterList = self.letterList
         combIndexList = self.combIndexList
         iter = list(zip(combIndexList, letterList))
@@ -87,16 +80,16 @@ class Recounter:
             nexts = n + 1
             count = len(l)
             if nexts < count:
-                output = [nexts] + output
+                newIndexList = [nexts] + newIndexList
                 break
-            output = [0] + output
+            newIndexList = [0] + newIndexList
 
-        if len(combIndexList) == len(output):
-            return [1] + output[1:]
-        pivot = len(combIndexList)-len(output)
-        return combIndexList[:pivot] + output
+        if len(combIndexList) == len(newIndexList):
+            return [1] + newIndexList[1:]
+        pivot = len(combIndexList) - len(newIndexList)
+        return combIndexList[:pivot] + newIndexList
 
-    def handleNext(self, logList, cache, nextC):
+    def handleNext(self, logger, newCache):
 
         copiedKeys = self.copiedKeys
 
@@ -112,54 +105,43 @@ class Recounter:
                 iv1 = self.combIndexList[dup]
                 if iv0 <= iv1:
                     self.combIndexList = self.iterateIteration(skip)
-                    return (logList, cache)
+                    return newCache
 
         # Cache partial matches
-        if len(ivList) >= nextC:
-            caching = tuple(self.combIndexList[:nextC])
-            if (cache or [()])[-1] != caching:
-                cache.append(tuple(caching))
+        if newCache.isEnough(len(ivList)):
+            newCache.addItem(self.combIndexList)
 
         # Update
         if isValid:
             for words in yieldWords(self.wordMap, ivList):
+                logger.add(self.logNexts(words))
                 self.addOutput(words)
-                logList.append(self.logNexts(words))
 
         # Iterate
         self.combIndexList = self.iterateIteration(skipping)
-        return (logList, cache)
+        logger.tries += 1
+        return newCache
 
-    def guessNext(self, cache, cacheC, nextC, leafIndex):
-        logMax = 4
-        leaf = self.leaf
-        [cached, cache] = [cache, []]
+    def guessNext(self, cache, leafIndex):
+        shh = self.config.shh
+        newCache = cache.toNew()
+        letterList = self.letterList
+        logArgs = (letterList, leafIndex, newCache)
+        logger = ResultLogger(shh, *logArgs)
 
-        for i, cacheItem in enumerate(cached):
+        for i, cacheItem in cache:
 
             self.recount(cacheItem)
 
-            tries = 0
-            logList = []
             while self.notComplete(cacheItem):
-                logList, cache = self.handleNext(logList, cache, nextC)
-                tries += 1
+                newCache = self.handleNext(logger, newCache)
 
-            # Logging
-            if len(logList):
-                lengths = [str(len(letters)) for letters in self.letterList]
-                pIndex = leafIndex + 1
-                prod = "x".join(lengths[cacheC:])
-                print(f'<result var="{prod}" pattern="{pIndex}">')
-                matchLog = f"{len(logList)}/{tries} match"
-                cacheLog = f"From {cacheC}w cache to {nextC}w cache"
-                print('. '.join([leaf, matchLog, cacheLog]))
-                print('\n'.join(logList[:logMax]))
-                if len(logList) > logMax:
-                    print('...')
-                print("</result>")
+        if not shh or leafIndex % 100 == 0:
+            logger.log(self.leaf, leafIndex)
+            if len(logger.logList) < 0:
+                self.addEmpty(self.leaf)
 
-        return cache
+        return newCache
 
     def notComplete(self, cacheItem):
         lastCache = cacheItem[-1]
@@ -177,13 +159,13 @@ class Recounter:
 
     def maskCombo(self, c):
         bits = ""
-        for a in self.files.cList:
+        for a in self.config.cList:
             bits += "1" if a in c else "0"
         return int(bits, 2)
 
-    def combiner(self, loop, allConsonants):
+    def combiner(self, zipped, allConsonants):
         combos = []
-        for next, letters, key in loop:
+        for next, letters, key in zipped:
             if next >= len(letters):
                 break
             combo = list(letters[next])
@@ -191,8 +173,11 @@ class Recounter:
             if (allConsonants & integer) != 0:
                 break
             allConsonants |= integer
-            out = {"combo": combo, "integer": allConsonants}
-            combos.append(ivParser(out))
+            out = {
+                "combo": ''.join(combo),
+                "integer": allConsonants
+            }
+            combos.append(out)
         return combos
 
     def combine(self):
@@ -200,5 +185,5 @@ class Recounter:
         letterList = self.letterList
         combIndexList = self.combIndexList
         allConsonants = int(self.ivListRoot[-1]["integer"])
-        loop = list(zip(combIndexList, letterList, keyList))[self.pivot:]
-        return self.combiner(loop, allConsonants)
+        zipped = list(zip(combIndexList, letterList, keyList))[self.pivot:]
+        return self.combiner(zipped, allConsonants)

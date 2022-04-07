@@ -20,11 +20,45 @@ conda activate abeci
 
 ## Generate Pangrams
 
-Use `tee` to write output of `python -u pangrams.py` to a logfile, like this:
+For help, run `python src/pangrams.py -h`
 
 ```
-python -u pangrams.py | tee 2022-04-01T1700.log
+python src/pangrams.py
 ```
+
+## Build
+
+
+Update setuptools in conda environemnt
+
+```
+python3 -m pip install --user --upgrade setuptools wheel 
+```
+
+```
+Install conda-build
+conda config --add channels conda-forge
+```
+
+```
+conda install conda-build
+```
+
+
+```
+conda build .
+```
+
+## Test
+
+```
+bash run_test.sh
+```
+
+## Publish
+
+- [Publish to pip](https://levelup.gitconnected.com/turn-your-python-code-into-a-pip-package-in-minutes-433ae669657f)
+- [Publish to conda](https://levelup.gitconnected.com/publishing-your-python-package-on-conda-and-conda-forge-309a405740cf)
 
 ## Gotchas
 

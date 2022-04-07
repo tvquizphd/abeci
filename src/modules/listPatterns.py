@@ -1,7 +1,8 @@
+from .patterns import patternFunction
+
 from sympy.solvers.diophantine.diophantine import partition
 from itertools import permutations, combinations
-
-import yaml
+import logging
 
 
 def getDict(d, keys):
@@ -67,9 +68,12 @@ def splitPartsWithLimit(maxPart, numTotal, num):
         yield part
 
 
-def toConsonantCounts(maxConsonants, numTotal, wordRange):
-    for nWords in wordRange:
-        for part in splitPartsWithLimit(maxConsonants, numTotal, nWords):
+def toConsonantCounts(config):
+    maxConsonants = config.maxConsonants
+    cCount = len(config.cList)
+    for nWords in config.wordRange():
+        splitArgs = (maxConsonants, cCount, nWords)
+        for part in splitPartsWithLimit(*splitArgs):
             yield part
 
 
@@ -88,11 +92,12 @@ def groupByPartition(pool, part):
             yield joinSorted(chosen) + rest
 
 
-def toVowelLists(maxVowels, wordRange):
-    vList = list("aeiouy")
+def toVowelLists(config):
+    maxVowels = config.maxVowels
+    vList = config.vList
     vCount = len(vList)
     uniq = set()
-    for nWords in wordRange:
+    for nWords in config.wordRange():
         maxNoVowel = int(nWords - vCount / maxVowels)
         for noVowelCount in range(maxNoVowel + 1):
             nVow = nWords - noVowelCount
@@ -106,28 +111,28 @@ def toVowelLists(maxVowels, wordRange):
                         yield out
 
 
-def toPatterns(maxConsonants, maxVowels):
-    minWords = 4
-    maxWords = 8
-    numTotal = 20
-    wordRange = list(range(minWords, maxWords + 1))
-    wordMap = {c: {'vowel': [], 'other': []} for c in wordRange}
-    for v in toVowelLists(maxVowels, wordRange):
-        wordMap[len(v)]["vowel"].append(v)
-    for c in toConsonantCounts(maxConsonants, numTotal, wordRange):
-        wordMap[len(c)]["other"].append(c)
+def toPatterns(config):
+    vcMap = {}
+    for nWords in config.wordRange():
+        vcMap[nWords] = {'vow': [], 'cons': []}
+    for v in toVowelLists(config):
+        vcMap[len(v)]["vow"].append(v)
+    for c in toConsonantCounts(config):
+        vcMap[len(c)]["cons"].append(c)
 
-    total = len(wordMap.items())
-    for i, kd in enumerate(wordMap.items()):
+    total = len(vcMap.items())
+    for i, kd in enumerate(vcMap.items()):
         k, d = kd
-        for vow in d["vowel"]:
-            for cons in d["other"]:
+        for vow in d["vow"]:
+            for cons in d["cons"]:
                 for v in findVowelLists(vow, cons):
                     yield {"len": k, "v": v, "c": cons}
-        print(f"{i + 1} of {total}")
+        logging.info(f"{k}-word patterns ({i + 1}/{total})")
 
 
-def invalidate(letterMap, maxReps, vcl):
+def invalidate(maps, config, vcl):
+    letterMap = maps.letterMap
+    maxReps = config.maxReps
     repMap = {}
     for k in vcl:
         if k not in letterMap:
@@ -139,25 +144,19 @@ def invalidate(letterMap, maxReps, vcl):
     return False
 
 
-def listWordTrees(possible, letterMap, maxReps):
-    vcLists = [toKeyTuple(line) for line in possible]
+def listPatterns(maps, config):
+    patterns = list(toPatterns(config))
+    vcLists = [toKeyTuple(line) for line in patterns]
     vcKeys = set([vc for vcs in vcLists for vc in vcs])
     vcKeysDescending = sorted(vcKeys, reverse=True)
     wordTree = {}
     already = set()
     for vcl in vcLists:
-        invalid = invalidate(letterMap, maxReps, vcl)
+        invalid = invalidate(maps, config, vcl)
         if vcl in already or invalid:
             continue
         wordTree = setDict(wordTree, vcl)
         already.add(vcl)
-    wordTreeList = sortDict(wordTree, vcKeysDescending, [])
-    return wordTreeList
-
-
-def writePatterns(possibleFile, letterMap, maxReps, maxConsonants, maxVowels):
-    possible = list(toPatterns(maxConsonants, maxVowels))
-    wordTreeList = listWordTrees(possible, letterMap, maxReps)
-    print(f'writing {possibleFile}...')
-    with open(possibleFile, "w") as wf:
-        yaml.dump(wordTreeList, wf)
+    tree = sortDict(wordTree, vcKeysDescending, [])
+    toPattern = patternFunction(config.empty)
+    return toPattern(tree)
