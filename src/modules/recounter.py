@@ -29,7 +29,7 @@ def yieldWords(wordMap, ivList, showAll):
         for words in product(*wordLists):
             yield tuple(words)
     else:
-        yield [words[0] for words in wordLists]
+        yield tuple([words[0] for words in wordLists])
 
 
 class Recounter:
