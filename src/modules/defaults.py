@@ -37,7 +37,7 @@ class Defaults():
     priors = PRIORS
     oDir = "results"
     eDir = "effects"
-    maxRatio = 0.333
+    maxRatio = 0.01
     maxCounts = {
         1: MAXIMA[1-1],
         2: MAXIMA[2-1],
