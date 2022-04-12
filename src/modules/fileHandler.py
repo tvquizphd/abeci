@@ -1,6 +1,7 @@
 from .readFromCache import readFromCache
 from .readFromCache import writeLines
 from .readFromCache import readLines
+from .flushHandler import FlushHandler
 from .patterns import patternFunction
 from .maps import mapFunction
 
@@ -34,6 +35,10 @@ class FileHandler:
         self.emptyFile = eDir / toPath("empty", "txt")
         self.outFile = oDir / toPath("pangrams", "txt")
         self.sourceFile = eDir / "source.p"
+        # Modify the config state
+        flushEmpty = self.flushEmpty
+        flushOutput = self.flushOutput
+        self.config.flushHandler = FlushHandler(flushEmpty, flushOutput)
 
     def readEmptyFile(self):
         emptyFile = self.emptyFile
@@ -107,16 +112,23 @@ class FileHandler:
         sText = f"{len(source)} source words"
         logging.info(f'Saved {sText} to {self.sourceFile}')
 
-    def finish(self, config, done=True):
+    def flushOutput(self, config):
         self.config = config
         output = config.output
-        empty = config.empty
         writeLines(self.outFile, output)
         oText = f"{len(output)} perfect pangram sets"
         logging.info(f'Saved {oText} to {self.outFile}')
+
+    def flushEmpty(self, config):
+        self.config = config
+        empty = config.empty
         writeLines(self.emptyFile, empty)
         eText = f"{len(empty)} unused patterns"
         logging.info(f'Saved {eText} to {self.emptyFile}')
+
+    def finish(self, config, done=True):
+        self.flushEmpty(config)
+        self.flushOutput(config)
         if not done:
             logging.warning("Incomplete!")
         else:

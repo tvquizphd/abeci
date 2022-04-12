@@ -1,4 +1,5 @@
 from .logging import logMaxCounts
+from .flushHandler import FlushHandler
 
 from statistics import variance
 from pathlib import Path
@@ -14,6 +15,7 @@ class Config:
     def __init__(self, shh, showAll, *args):
         (maxRatio, maxCounts, maxReps, priors) = args[:4]
         (minWords, maxWords, maxC, maxV) = args[4:]
+        self.flushHandler = FlushHandler()
         self.maxRatio = maxRatio
         self.maxCounts = maxCounts
         self.maxReps = maxReps
@@ -53,12 +55,14 @@ class Config:
 
     def addEmpty(self, line):
         self.empty.append(line)
+        self.empty = self.flushHandler.flushEmpty(self)
 
     def addSource(self, wf):
         self.source.append(wf)
 
     def addOutput(self, words):
         self.output.append(" ".join(words))
+        self.output = self.flushHandler.flushOutput(self)
 
     @property
     def outputLength(self):
