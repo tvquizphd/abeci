@@ -4,19 +4,19 @@ class FlushHandler():
     OUTPUT_MAX = 1000
 
     def __init__(self, flushEmpty=None, flushOutput=None):
-        self.flushEmpty = flushEmpty
-        self.flushOutput = flushOutput
+        self._flushEmpty = flushEmpty
+        self._flushOutput = flushOutput
 
     def flushEmpty(self, config):
         empty = config.empty
-        if self.flushEmpty and len(empty) >= self.EMPTY_MAX:
-            self.flushEmpty(config)
+        if self._flushEmpty and len(empty) >= self.EMPTY_MAX:
+            self._flushEmpty(config)
             return []
         return empty
 
     def flushOutput(self, config):
         output = config.output
-        if self.flushOutput and len(output) >= self.OUTPUT_MAX:
-            self.flushOutput(config)
+        if self._flushOutput and len(output) >= self.OUTPUT_MAX:
+            self._flushOutput(config)
             return []
         return output
