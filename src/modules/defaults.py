@@ -29,7 +29,7 @@ PRIORS = {
     "j": 0.0011,
     "q": 0.0009
 }
-MAXIMA = [0, 200, 800, 1600]
+MAXIMA = [0, 128, 512, 1024]
 
 
 class Defaults():
