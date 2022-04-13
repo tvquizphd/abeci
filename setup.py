@@ -27,6 +27,7 @@ setuptools.setup(
         'abeci-pangrams = abeci.pangrams:pangramsCli'
     ]),
     packages=setuptools.find_packages('src'),
-    package_dir={'abeci':'src/abeci'},
+    package_dir={'':'src'},
+    install_requires=['abeci'],
     classifiers=classifiers
 )
