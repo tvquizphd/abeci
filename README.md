@@ -6,7 +6,7 @@ Create [perfect pangrams][pp], sentences with exactly one of each letter in the 
 
 ## Generate Pangrams
 
-After installing locally or with pip/conda, you can run:
+After installing `abeci` as a package, you can run:
 
 ```
 abeci-pangrams
@@ -18,13 +18,14 @@ This script makes a text file with this name, in `results` by default:
 ./results/std4_max1_has_2x_3x/pangrams_1024_0x1_128x2_512x3_1024x4.txt
 ```
 
-It also generates additional files in an `effects` directory.
-
 If the `effects/source.p` file is missing,
   - The script uses Google's English Corpus of all books published in 2008.
   - The script will wiret an `effects/source.p` to speed up future calls to the script.
 
-it also writes a log file such as `2022-04-07T0200.log`.
+it also:
+  - writes a log file such as `2022-04-07T0200.log`.
+  - writes intermediate files in an `effects` directory.
+
 The file is named after the current date and UTC time.
 
 Run the help command for options: `abeci-pangrams -h`
@@ -55,6 +56,14 @@ Then, activate the installed environment:
 ```
 conda activate abeci
 ```
+
+After installing dependencies, you can run:
+
+```
+python src/pangrams.py
+```
+
+Run the help command for options: `python src/pangrams.py -h`
 
 ## Build Locally w/ pip
 
