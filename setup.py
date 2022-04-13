@@ -16,7 +16,7 @@ classifiers = [
 
 setuptools.setup(
     name="abeci",
-    version="1.0.0",
+    version="1.0.3",
     author="TVQuizPhD",
     long_description=long_description,
     author_email="tvquizphd@email.com",
