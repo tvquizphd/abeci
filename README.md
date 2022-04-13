@@ -23,10 +23,8 @@ If the `effects/source.p` file is missing,
   - The script will write an `effects/source.p` to speed up future calls to the script.
 
 it also:
-  - writes a log file such as `2022-04-07T0200.log`.
+  - writes a log file such as `2022-04-07T0200.log`, with UTC time.
   - writes intermediate files in an `effects` directory.
-
-The file is named after the current date and UTC time.
 
 Run the help command for options: `abeci-pangrams -h`
 
