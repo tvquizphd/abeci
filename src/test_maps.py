@@ -1,6 +1,6 @@
 import unittest
 
-from modules.maps import Maps
+from abeci.maps import Maps
 
 
 class InData():
