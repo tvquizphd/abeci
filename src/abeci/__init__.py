@@ -1,3 +1,4 @@
+from .pangrams import pangramsCli
 from .readWordRecords import readWordRecords
 from .defaults import normalizeArguments
 from .listPatterns import listPatterns
@@ -10,6 +11,7 @@ from .defaults import Defaults
 from .config import Config
 
 __all__ = [
+    'pangramsCli',
     'readWordRecords',
     'normalizeArguments',
     'listPatterns',
