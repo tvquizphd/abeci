@@ -16,7 +16,7 @@ classifiers = [
 
 setuptools.setup(
     name="abeci",
-    version="1.0.4",
+    version="1.0.5",
     author="TVQuizPhD",
     long_description=long_description,
     author_email="tvquizphd@email.com",
@@ -27,7 +27,7 @@ setuptools.setup(
         'abeci-pangrams = abeci.pangrams:pangramsCli'
     ]),
     packages=setuptools.find_packages('src'),
-    package_data={'': ['./src/abeci/typo/data/*.txt']},
+    package_data={'abeci': ['typo/data/*.txt']},
     package_dir={'':'src'},
     install_requires=['abeci'],
     classifiers=classifiers
