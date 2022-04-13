@@ -19,10 +19,14 @@ setuptools.setup(
     version="1.0.0",
     author="TVQuizPhD",
     long_description=long_description,
-    packages=setuptools.find_packages(),
     author_email="tvquizphd@email.com",
     description="Find perfect pangrams",
     url="https://github.com/tvquizphd/abeci",
     long_description_content_type="text/markdown",
-    classifiers=classifiers,
+    entry_points=dict(console_scripts=[
+        'abeci-pangrams = abeci.pangrams:pangramsCli'
+    ]),
+    packages=setuptools.find_packages('src'),
+    package_dir={'abeci':'src/abeci'},
+    classifiers=classifiers
 )

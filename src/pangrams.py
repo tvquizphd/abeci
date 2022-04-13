@@ -1,5 +1,5 @@
-from modules.savePangrams import savePangrams
-from modules.arguments import Arguments
+from abeci.savePangrams import savePangrams
+from abeci.arguments import Arguments
 
 import logging
 

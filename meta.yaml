@@ -1,12 +1,12 @@
 package:
-    name: abeci
-    version: "1.0.0"
+  name: abeci
+  version: "1.0.0"
 source:
-    git_url: https://github.com/ilanschnell/bsdiff4.git
-    git_rev: "1.0.0"
+  git_rev: "1.0.0"
+  path: ./src/abeci
 build:
-    entry_points:
-        - src.pangrams:pangramsCli
+  entry_points:
+    - abeci-pangrams = abeci.pangrams:pangramsCli
 requirements:
   build:
     - git
