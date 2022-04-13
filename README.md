@@ -20,7 +20,7 @@ This script makes a text file with this name, in `results` by default:
 
 If the `effects/source.p` file is missing,
   - The script uses Google's English Corpus of all books published in 2008.
-  - The script will wiret an `effects/source.p` to speed up future calls to the script.
+  - The script will write an `effects/source.p` to speed up future calls to the script.
 
 it also:
   - writes a log file such as `2022-04-07T0200.log`.
@@ -34,7 +34,7 @@ Run the help command for options: `abeci-pangrams -h`
 ## API Usage
 
 - No programatic api is documented at this time:
-- Look to `src/modules/savePangrams.py` for inspiration
+- Look to `src/abeci/savePangrams.py` for inspiration
 
 
 # Local Installation
