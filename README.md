@@ -56,15 +56,25 @@ Then, activate the installed environment:
 conda activate abeci
 ```
 
-## Install Locally w/ pip
+## Build Locally w/ pip
 
-After activating the conda environment, install locally with pip
+Upgrade pip and build with pip
+
+```
+python -m pip install --upgrade pip
+pip install build
+```
+
+## Install Locally
+
+Using the conda environment, install locally with pip:
 
 ```
 VIRTUAL_ENV=$CONDA_PREFIX pip install --src $VIRTUAL_ENV/src -e .
 ```
 
-## Install Locally w/ conda
+<!---
+## Build Locally w/ conda
 
 Update setuptools in conda environemnt
 
@@ -85,6 +95,7 @@ conda install conda-build
 ```
 conda build .
 ```
+--->
 
 ## Test
 
@@ -100,7 +111,3 @@ Publishing happens on release. The following two links were inspirations:
 
 - [Publish to pip](https://levelup.gitconnected.com/turn-your-python-code-into-a-pip-package-in-minutes-433ae669657f)
 - [Publish to conda](https://levelup.gitconnected.com/publishing-your-python-package-on-conda-and-conda-forge-309a405740cf)
-
-## Gotchas
-
-- If needed, find where `google_ngram_downloader` is installed, and change the URL prefix to use https.
